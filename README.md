@@ -16,7 +16,8 @@ floating over the card like augmented reality. Tap **Check in Pricecharting here
    using the daily ECB rate ([frankfurter.dev](https://frankfurter.dev)).
 4. **AR overlay** – the price bubble follows the card on screen. Touch it to freeze it in place.
 5. **History** – the lower half of the screen lists scanned cards with both prices. Each card appears once;
-   scanning it again moves it back to the top. Tap an entry to open it on PriceCharting.
+   scanning it again moves it back to the top. Tap an entry to open it on PriceCharting. Drag the
+   panel's top edge to resize it, or drag it all the way down to collapse it to a small tab.
 
 PriceCharting is protected by Cloudflare, so pages load in a hidden WebView. If Cloudflare asks for a
 human check, the app shows it — complete it once and scanning continues.

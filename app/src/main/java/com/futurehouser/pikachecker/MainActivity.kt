@@ -45,7 +45,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.text.style.TextAlign
@@ -384,15 +387,85 @@ private fun PriceColumn(label: String, color: Color, loading: Boolean, value: St
     }
 }
 
+private val PanelBackground = Color(0xD9101418)
+private const val PANEL_MIN_DP = 140f
+/** Dragging the panel below this height and letting go collapses it to the thumb. */
+private const val PANEL_COLLAPSE_DP = 100f
+
+/**
+ * History panel docked at the bottom. Drag its top edge to resize it; drag it down past the minimum
+ * (or tap the chevron) to collapse it to a small thumb, and tap or drag the thumb up to bring it back.
+ * Height and collapsed state are remembered across launches.
+ */
 @Composable
-private fun HistoryPanel(history: ScanHistory, currency: Currency, modifier: Modifier = Modifier) {
+private fun HistoryPanel(history: ScanHistory, currency: Currency, available: Dp) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val prefs = remember { context.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE) }
+    val maxDp = available.value * 0.85f
+    var heightDp by remember { mutableFloatStateOf(prefs.getFloat("panel_height", available.value * 0.5f)) }
+    var collapsed by remember { mutableStateOf(prefs.getBoolean("panel_collapsed", false)) }
+    fun persist() {
+        prefs.edit().putFloat("panel_height", heightDp).putBoolean("panel_collapsed", collapsed).apply()
+    }
+    fun expand() {
+        collapsed = false
+        heightDp = heightDp.coerceIn(PANEL_MIN_DP, maxDp)
+        persist()
+    }
+    val resize = rememberDraggableState { deltaPx ->
+        heightDp = (heightDp - with(density) { deltaPx.toDp().value }).coerceIn(PANEL_COLLAPSE_DP - 40f, maxDp)
+    }
+
+    if (collapsed) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+            Row(
+                Modifier
+                    .background(PanelBackground, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .clickable { expand() }
+                    .draggable(
+                        orientation = Orientation.Vertical,
+                        state = rememberDraggableState { delta -> if (delta < -4f) expand() },
+                    )
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("︿", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.size(8.dp))
+                Text("History (${history.entries.size})", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        return
+    }
+
     Column(
-        modifier
+        Modifier
             .fillMaxWidth()
-            .background(Color(0xD9101418), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
-            .padding(top = 10.dp),
+            .height(heightDp.coerceAtMost(maxDp).dp)
+            .background(PanelBackground, RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)),
     ) {
+        // Drag handle: the panel's upper border.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(26.dp)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = resize,
+                    onDragStopped = {
+                        if (heightDp < PANEL_COLLAPSE_DP) {
+                            collapsed = true
+                            heightDp = PANEL_MIN_DP
+                        } else {
+                            heightDp = heightDp.coerceAtLeast(PANEL_MIN_DP)
+                        }
+                        persist()
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(width = 44.dp, height = 5.dp).background(Color(0xFF8A929C), RoundedCornerShape(3.dp)))
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -403,7 +476,12 @@ private fun HistoryPanel(history: ScanHistory, currency: Currency, modifier: Mod
             )
             if (history.entries.isNotEmpty()) {
                 Text("Clear", color = LinkBlue, fontSize = 13.sp, modifier = Modifier.clickable { history.clear() }.padding(4.dp))
+                Spacer(Modifier.size(12.dp))
             }
+            Text(
+                "﹀", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { collapsed = true; persist() }.padding(4.dp),
+            )
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             Spacer(Modifier.weight(1f))
@@ -452,7 +530,9 @@ private fun HistoryPanel(history: ScanHistory, currency: Currency, modifier: Mod
 
 @Composable
 private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit, history: ScanHistory, currency: Currency) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+    val available = maxHeight
+    Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -475,7 +555,8 @@ private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit, history: S
                 .background(Color(0x99000000), RoundedCornerShape(20.dp))
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        HistoryPanel(history, currency, Modifier.fillMaxHeight(0.5f))
+        HistoryPanel(history, currency, available)
+    }
     }
 }
 
