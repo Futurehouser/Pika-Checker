@@ -1,7 +1,10 @@
 package com.futurehouser.pikachecker
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.setValue
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,6 +26,10 @@ class ScanHistory(context: Context) {
     private val prefs = context.getSharedPreferences("history", Context.MODE_PRIVATE)
     val entries = mutableStateListOf<HistoryEntry>()
 
+    /** Bumped whenever an entry is added or moved to the top, so the list can scroll up. */
+    var topChanges by mutableIntStateOf(0)
+        private set
+
     init {
         runCatching {
             val arr = JSONArray(prefs.getString("entries", "[]"))
@@ -33,6 +40,7 @@ class ScanHistory(context: Context) {
     /** Adds the card at the top; if it was already logged, the old entry is replaced and moves up. */
     fun record(entry: HistoryEntry) {
         val existing = entries.indexOfFirst { it.key == entry.key || it.url == entry.url }
+        topChanges++
         if (existing == 0 && entries[0].copy(time = entry.time) == entry) return
         if (existing >= 0) entries.removeAt(existing)
         entries.add(0, entry)

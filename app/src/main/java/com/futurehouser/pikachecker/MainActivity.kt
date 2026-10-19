@@ -51,6 +51,7 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -494,7 +495,10 @@ private fun HistoryPanel(history: ScanHistory, currency: Currency, available: Dp
                 color = Color(0xFFB0B8C4), fontSize = 13.sp, modifier = Modifier.padding(16.dp),
             )
         }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+        val listState = rememberLazyListState()
+        // Bring the newest (or just re-scanned) card into view.
+        LaunchedEffect(history.topChanges) { if (history.entries.isNotEmpty()) listState.animateScrollToItem(0) }
+        LazyColumn(Modifier.fillMaxWidth().weight(1f), state = listState) {
             items(history.entries, key = { it.key }) { entry ->
                 Row(
                     Modifier
