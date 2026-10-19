@@ -65,7 +65,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -124,6 +124,8 @@ private fun App(priceCharting: PriceCharting, currency: Currency, updater: Updat
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // Composed first so it sits behind the camera until a human check is needed.
+        VerificationOverlay(priceCharting)
         if (hasCamera) {
             Scanner(priceCharting, currency)
         } else {
@@ -133,7 +135,6 @@ private fun App(priceCharting: PriceCharting, currency: Currency, updater: Updat
                 Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) { Text("Allow camera") }
             }
         }
-        VerificationOverlay(priceCharting)
         UpdatePrompt(updater)
     }
 }
@@ -164,6 +165,8 @@ private fun Scanner(priceCharting: PriceCharting, currency: Currency) {
         factory = { ctx ->
             PreviewView(ctx).also { view ->
                 view.scaleType = PreviewView.ScaleType.FILL_CENTER
+                // TextureView-based preview so the PriceCharting WebView can live underneath it.
+                view.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                 val executor = ContextCompat.getMainExecutor(ctx)
                 camera.setImageAnalysisAnalyzer(
@@ -297,6 +300,22 @@ private fun PriceBubble(
                 Spacer(Modifier.size(8.dp))
                 Text("Checking ${card.name} ${card.printedNumber}…", color = Color.White, fontSize = 14.sp)
             }
+            Lookup.Failed -> {
+                Text("${card.name} ${card.printedNumber}", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Couldn't reach PriceCharting", color = Color(0xFFFFB4A9), fontSize = 13.sp)
+                Row {
+                    Text("Retry", color = LinkBlue, fontSize = 13.sp, modifier = Modifier.clickable(onClick = onRetry))
+                    Spacer(Modifier.size(16.dp))
+                    Text(
+                        "Check in Pricecharting here", color = LinkBlue, fontSize = 13.sp,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable {
+                            val q = Uri.encode("${card.name} ${card.searchNumber}")
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("${PriceCharting.BASE}/es/search-products?type=prices&q=$q")))
+                        },
+                    )
+                }
+            }
             Lookup.NotFound -> {
                 Text("${card.name} ${card.printedNumber}", color = Color.White, fontWeight = FontWeight.Bold)
                 Text("Not found on PriceCharting", color = Color(0xFFFFB4A9), fontSize = 13.sp)
@@ -378,22 +397,43 @@ private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit) {
     }
 }
 
-/** Shows the hidden PriceCharting WebView only when Cloudflare wants a human check. */
+/**
+ * Hosts the PriceCharting WebView. It is always full-size (Cloudflare checks that the page is really
+ * laid out) but sits behind the camera; it comes to the front only when a human check is needed.
+ */
 @Composable
 private fun VerificationOverlay(priceCharting: PriceCharting) {
+    val context = LocalContext.current
     val needs by priceCharting.needsVerification.collectAsState()
-    Box(if (needs) Modifier.fillMaxSize().background(Color.Black) else Modifier.size(1.dp).alpha(0f)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            if (needs) {
-                Text(
-                    "PriceCharting wants to confirm you're human. Complete the check below once and scanning will continue.",
-                    color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(16.dp),
-                )
-            }
-            AndroidView(
-                factory = { priceCharting.webView.also { (it.parent as? android.view.ViewGroup)?.removeView(it) } },
-                modifier = Modifier.fillMaxSize(),
+    Column(
+        Modifier
+            .fillMaxSize()
+            .zIndex(if (needs) 10f else 0f)
+            .background(Color.Black)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
+        if (needs) {
+            Text(
+                "PriceCharting wants to confirm you're human. Tap the checkbox below once; " +
+                    "after that, scanning continues on its own.",
+                color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(16.dp),
             )
+        }
+        AndroidView(
+            factory = { priceCharting.webView.also { (it.parent as? android.view.ViewGroup)?.removeView(it) } },
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        )
+        if (needs) {
+            Row(
+                Modifier.fillMaxWidth().padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = { priceCharting.cancelVerification() }) { Text("Cancel", color = Color.White) }
+                TextButton(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PriceCharting.toSpanish(priceCharting.currentUrl))))
+                }) { Text("Open in browser", color = LinkBlue) }
+            }
         }
     }
 }

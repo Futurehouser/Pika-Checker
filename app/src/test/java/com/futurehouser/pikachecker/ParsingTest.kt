@@ -44,6 +44,17 @@ class ParsingTest {
     }
 
     @Test
+    fun userAgentLooksLikeChrome() {
+        val webView = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UQ1A.240205.004; wv) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Version/4.0 Chrome/129.0.6668.100 Mobile Safari/537.36"
+        assertEquals(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/129.0.6668.100 Mobile Safari/537.36",
+            PriceCharting.browserUserAgent(webView),
+        )
+    }
+
+    @Test
     fun versions() {
         assertTrue(Updater.isNewer("1.0.1", "1.0.0"))
         assertTrue(Updater.isNewer("1.10.0", "1.9.9"))

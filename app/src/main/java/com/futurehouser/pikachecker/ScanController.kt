@@ -11,6 +11,8 @@ import kotlinx.coroutines.launch
 sealed interface Lookup {
     data object Searching : Lookup
     data object NotFound : Lookup
+    /** PriceCharting could not be reached or the human check was cancelled. */
+    data object Failed : Lookup
     data class Found(
         val candidates: List<Candidate>,
         val index: Int,
@@ -35,6 +37,8 @@ class ScanController(
     private var busy = false
 
     fun onText(text: Text?) {
+        // Don't queue new lookups while the user is completing the Cloudflare check.
+        if (priceCharting.needsVerification.value) return
         val card = text?.let(CardRecognizer::recognize) ?: return
         // Require the same reading on consecutive frames before trusting it.
         if (card.key == pendingKey) pendingCount++ else {
@@ -53,7 +57,11 @@ class ScanController(
         lookups[card.key] = Lookup.Searching
         scope.launch {
             try {
-                val candidates = runCatching { priceCharting.search(card) }.getOrDefault(emptyList())
+                val candidates = runCatching { priceCharting.search(card) }.getOrNull()
+                if (candidates == null) {
+                    lookups[card.key] = Lookup.Failed
+                    return@launch
+                }
                 if (candidates.isEmpty()) {
                     lookups[card.key] = Lookup.NotFound
                     return@launch
