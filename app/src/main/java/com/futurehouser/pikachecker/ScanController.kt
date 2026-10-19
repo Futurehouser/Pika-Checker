@@ -25,6 +25,7 @@ sealed interface Lookup {
 class ScanController(
     private val scope: CoroutineScope,
     private val priceCharting: PriceCharting,
+    private val history: ScanHistory,
 ) {
     var detection by mutableStateOf<CardDetection?>(null)
         private set
@@ -35,6 +36,9 @@ class ScanController(
     private var pendingKey: String? = null
     private var pendingCount = 0
     private var busy = false
+    private val cards = mutableMapOf<String, CardDetection>()
+    /** Last card written to the history, so a card held in view is not re-logged every frame. */
+    private var lastLogged: String? = null
 
     fun onText(text: Text?) {
         // Don't queue new lookups while the user is completing the Cloudflare check.
@@ -49,7 +53,10 @@ class ScanController(
 
         detection = card
         lastSeen = System.currentTimeMillis()
+        cards[card.key] = card
         if (lookups[card.key] == null && !busy) startLookup(card)
+        // A card seen again (already priced) moves back to the top of the history.
+        if (lastLogged != card.key) log(card.key)
     }
 
     private fun startLookup(card: CardDetection) {
@@ -69,6 +76,7 @@ class ScanController(
                 lookups[card.key] = Lookup.Found(candidates, 0, null, loadingPrice = true)
                 val price = runCatching { priceCharting.price(candidates[0]) }.getOrNull()
                 lookups[card.key] = Lookup.Found(candidates, 0, price, loadingPrice = false)
+                log(card.key)
             } finally {
                 busy = false
             }
@@ -84,8 +92,31 @@ class ScanController(
         scope.launch {
             val price = runCatching { priceCharting.price(current.candidates[next]) }.getOrNull()
             val now = lookups[key] as? Lookup.Found ?: return@launch
-            if (now.index == next) lookups[key] = now.copy(price = price, loadingPrice = false)
+            if (now.index == next) {
+                lookups[key] = now.copy(price = price, loadingPrice = false)
+                log(key) // replaces the entry with the newly chosen set
+            }
         }
+    }
+
+    private fun log(key: String) {
+        val found = lookups[key] as? Lookup.Found ?: return
+        val price = found.price ?: return
+        if (found.loadingPrice) return
+        val card = cards[key] ?: return
+        history.record(
+            HistoryEntry(
+                key = key,
+                title = price.title,
+                set = price.set,
+                printedNumber = card.printedNumber,
+                url = price.url,
+                psa10Usd = price.psa10Usd,
+                ungradedUsd = price.ungradedUsd,
+                time = System.currentTimeMillis(),
+            )
+        )
+        lastLogged = key
     }
 
     fun retry(key: String) {

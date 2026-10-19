@@ -44,6 +44,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -90,6 +95,7 @@ import kotlinx.coroutines.launch
 
 private val PikaYellow = Color(0xFFFFCB05)
 private val LinkBlue = Color(0xFF4FA3FF)
+private val UngradedGreen = Color(0xFF8FD694)
 
 class MainActivity : ComponentActivity() {
 
@@ -144,7 +150,8 @@ private fun Scanner(priceCharting: PriceCharting, currency: Currency) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val controller = remember { ScanController(scope, priceCharting) }
+    val history = remember { ScanHistory(context) }
+    val controller = remember { ScanController(scope, priceCharting, history) }
     var torch by remember { mutableStateOf(false) }
 
     val camera = remember {
@@ -196,6 +203,17 @@ private fun Scanner(priceCharting: PriceCharting, currency: Currency) {
 
     if (card != null && visible && now >= pinnedUntil) CardFrame(card)
 
+    TopBar(
+        hint = when {
+            card == null || !visible -> "Point the camera at a Pokémon card"
+            else -> "${card.name} · ${card.printedNumber}"
+        },
+        torch = torch,
+        onTorch = { torch = !torch },
+        history = history,
+        currency = currency,
+    )
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val maxW = with(density) { maxWidth.roundToPx() }
@@ -237,15 +255,6 @@ private fun Scanner(priceCharting: PriceCharting, currency: Currency) {
             }
         }
     }
-
-    TopBar(
-        hint = when {
-            card == null || !visible -> "Point the camera at a Pokémon card"
-            else -> "${card.name} · ${card.printedNumber}"
-        },
-        torch = torch,
-        onTorch = { torch = !torch },
-    )
 }
 
 @Composable
@@ -334,16 +343,10 @@ private fun PriceBubble(
                     color = Color(0xFFB0B8C4), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("PSA 10  ", color = PikaYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    when {
-                        lookup.loadingPrice -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = PikaYellow)
-                        price == null -> Text("Unavailable", color = Color.White, fontSize = 16.sp)
-                        else -> Text(currency.format(price.psa10Usd), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
-                    }
-                }
-                if (price?.ungradedUsd != null) {
-                    Text("Ungraded ${currency.format(price.ungradedUsd)}", color = Color(0xFFB0B8C4), fontSize = 12.sp)
+                Row {
+                    PriceColumn("PSA 10", PikaYellow, lookup.loadingPrice, price?.let { currency.format(it.psa10Usd) })
+                    Spacer(Modifier.size(18.dp))
+                    PriceColumn("Ungraded", UngradedGreen, lookup.loadingPrice, price?.let { currency.format(it.ungradedUsd) })
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -370,7 +373,85 @@ private fun PriceBubble(
 }
 
 @Composable
-private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit) {
+private fun PriceColumn(label: String, color: Color, loading: Boolean, value: String?) {
+    Column {
+        Text(label, color = color, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        when {
+            loading -> CircularProgressIndicator(Modifier.padding(top = 4.dp).size(18.dp), strokeWidth = 2.dp, color = color)
+            value == null -> Text("Unavailable", color = Color.White, fontSize = 15.sp)
+            else -> Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+        }
+    }
+}
+
+@Composable
+private fun HistoryPanel(history: ScanHistory, currency: Currency, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(Color(0xD9101418), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+            .padding(top = 10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "History (${history.entries.size})", color = Color.White, fontWeight = FontWeight.Bold,
+                fontSize = 15.sp, modifier = Modifier.weight(1f),
+            )
+            if (history.entries.isNotEmpty()) {
+                Text("Clear", color = LinkBlue, fontSize = 13.sp, modifier = Modifier.clickable { history.clear() }.padding(4.dp))
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Spacer(Modifier.weight(1f))
+            Text("PSA 10", color = PikaYellow, fontSize = 11.sp, textAlign = TextAlign.End, modifier = Modifier.width(88.dp))
+            Text("Ungraded", color = UngradedGreen, fontSize = 11.sp, textAlign = TextAlign.End, modifier = Modifier.width(88.dp))
+        }
+        if (history.entries.isEmpty()) {
+            Text(
+                "Scanned cards will appear here.",
+                color = Color(0xFFB0B8C4), fontSize = 13.sp, modifier = Modifier.padding(16.dp),
+            )
+        }
+        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+            items(history.entries, key = { it.key }) { entry ->
+                Row(
+                    Modifier
+                        .animateItem()
+                        .fillMaxWidth()
+                        .clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(entry.url))) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            entry.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "${entry.set} · ${entry.printedNumber}", color = Color(0xFFB0B8C4), fontSize = 11.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        currency.format(entry.psa10Usd), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.End, modifier = Modifier.width(88.dp),
+                    )
+                    Text(
+                        currency.format(entry.ungradedUsd), color = Color.White, fontSize = 14.sp,
+                        textAlign = TextAlign.End, modifier = Modifier.width(88.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit, history: ScanHistory, currency: Currency) {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         Row(
             Modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 16.dp, vertical = 10.dp),
@@ -379,7 +460,7 @@ private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit) {
         ) {
             Column {
                 Text("Pika Checker", color = PikaYellow, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                Text("v${BuildConfig.VERSION_NAME} · PSA 10 prices in €", color = Color(0xFFB0B8C4), fontSize = 11.sp)
+                Text("v${BuildConfig.VERSION_NAME} · PSA 10 & ungraded in €", color = Color(0xFFB0B8C4), fontSize = 11.sp)
             }
             TextButton(onClick = onTorch) { Text(if (torch) "Flash on" else "Flash off", color = Color.White) }
         }
@@ -390,10 +471,11 @@ private fun TopBar(hint: String, torch: Boolean, onTorch: () -> Unit) {
             fontSize = 14.sp,
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
-                .padding(bottom = 24.dp)
+                .padding(bottom = 10.dp)
                 .background(Color(0x99000000), RoundedCornerShape(20.dp))
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         )
+        HistoryPanel(history, currency, Modifier.fillMaxHeight(0.5f))
     }
 }
 

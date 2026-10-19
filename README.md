@@ -3,7 +3,7 @@
 # Pika Checker
 
 Android app that reads Pokémon TCG cards through the camera in real time and shows each card's
-**PSA 10 price from [PriceCharting](https://www.pricecharting.com/es/category/pokemon-cards), in euros**,
+**PSA 10 and ungraded prices from [PriceCharting](https://www.pricecharting.com/es/category/pokemon-cards), in euros**,
 floating over the card like augmented reality. Tap **Check in Pricecharting here** to open the card's page.
 
 ## How it works
@@ -15,6 +15,8 @@ floating over the card like augmented reality. Tap **Check in Pricecharting here
 3. **Price** – the PSA 10 (and ungraded) price is read from the product page and converted from USD to EUR
    using the daily ECB rate ([frankfurter.dev](https://frankfurter.dev)).
 4. **AR overlay** – the price bubble follows the card on screen. Touch it to freeze it in place.
+5. **History** – the lower half of the screen lists scanned cards with both prices. Each card appears once;
+   scanning it again moves it back to the top. Tap an entry to open it on PriceCharting.
 
 PriceCharting is protected by Cloudflare, so pages load in a hidden WebView. If Cloudflare asks for a
 human check, the app shows it — complete it once and scanning continues.
