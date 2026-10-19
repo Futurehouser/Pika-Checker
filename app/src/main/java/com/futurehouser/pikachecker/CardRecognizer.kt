@@ -20,7 +20,7 @@ data class CardDetection(
 object CardRecognizer {
 
     // 025/165, 4/102, TG12/TG30, GG05/GG70, SV045/SV094, 199/165
-    private val numberRegex = Regex("""(?<![A-Z0-9])([A-Z]{0,3}\s?\d{1,3})\s?/\s?([A-Z]{0,3}\s?\d{2,3})(?![0-9])""")
+    private val numberRegex = Regex("""(?<![A-Z0-9])([A-Z]{0,3}\d{1,3})\s?/\s?([A-Z]{0,3}\d{2,3})(?![0-9])""")
     // Black star promos: SWSH050, SM210, XY124, BW95, SVP 085, "SVP EN 085"
     private val promoRegex = Regex("""(?<![A-Z0-9])(SWSH|SVP|SM|XY|BW|DP|HGSS)\s?(?:EN\s?)?(\d{2,3})(?![0-9])""")
 
